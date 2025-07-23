@@ -12,6 +12,10 @@ from django.contrib import messages
 from django.contrib.sites.shortcuts import get_current_site
 from django.contrib.auth import login, authenticate, logout
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework import status
 # Create your views here.
 def verify_recaptcha(token):
     """Helper function to verify reCAPTCHA"""
@@ -85,21 +89,21 @@ def activate(request, uidb64, token):
 def home(request):
     return render(request, "home.html")
 
-def login(request):
+def signin(request):
     if request.method == "POST":
         form = LoginForm(request.POST)
         if form.is_valid():
             token = request.POST.get('g-recaptcha-response')
             if not verify_recaptcha(token):
                 form.add_error(None, "reCaptcha failed")
-                return render(request, 'sign_in.html', {'form':form, 'RECAPTCHA_PUBLIC_KEY': settings.RECAPTCHA_PUBLIC_KEY})
+                return render(request, 'login.html', {'form':form, 'RECAPTCHA_PUBLIC_KEY': settings.RECAPTCHA_PUBLIC_KEY})
             password = form.cleaned_data['password']
             username = form.cleaned_data['username']
             user = authenticate(request, username=username, password= password)
             if user is not None:
                 if not user.is_verified:
                     form.add_error(None, "Please verify your email before logging in")
-                    return render(request, 'sign_in.html', {'form':form, 'RECAPTCHA_PUBLIC_KEY': settings.RECAPTCHA_PUBLIC_KEY})
+                    return render(request, 'login.html', {'form':form, 'RECAPTCHA_PUBLIC_KEY': settings.RECAPTCHA_PUBLIC_KEY})
                 login(request, user)
                 refresh = RefreshToken.for_user(user)
                 access_token = str(refresh.access_token)
@@ -108,5 +112,20 @@ def login(request):
                 form.add_error(None, "Invalid username or password")
         else:
             form =LoginForm()
-        return render(request, 'sign_in.html', {'form':form, 'RECAPTCHA_PUBLIC_KEY': settings.RECAPTCHA_PUBLIC_KEY})
+        return render(request, 'login.html', {'form':form, 'RECAPTCHA_PUBLIC_KEY': settings.RECAPTCHA_PUBLIC_KEY})
+    else:
+        form = LoginForm()
+    return render(request, 'login.html', {'form':form, 'RECAPTCHA_PUBLIC_KEY': settings.RECAPTCHA_PUBLIC_KEY})
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_profile(request):
+    user = request.user
+    if user.is_authenticated:
+        return Response({
+            'username': user.username,
+            'email': user.email,
+            'is_verified': user.is_verified
+        })
+    return Response({'error': 'User not authenticated'}, status=status.HTTP_401_UNAUTHORIZED)
 
